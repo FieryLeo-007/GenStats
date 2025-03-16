@@ -1,111 +1,75 @@
 import { useState } from "react";
+import axios from "axios";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileUploader } from "react-drag-drop-files";
-import { WebSocketProvider, useWebSocket } from "react-use-websocket";
-import { BarChart, XAxis, YAxis, Tooltip, Legend, Bar, LineChart, Line } from "recharts";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
-export default function Dashboard() {
+export default function GenStats() {
   const [file, setFile] = useState(null);
-  const [data, setData] = useState(null);
-  const [wsMessage, setWsMessage] = useState("");
-  const { sendMessage, lastMessage } = useWebSocket("ws://localhost:8000/ws");
-  const [showAIChat, setShowAIChat] = useState(false);
+  const [fileId, setFileId] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [query, setQuery] = useState("");
   const [aiResponse, setAiResponse] = useState("");
-  const { toast } = useToast();
 
-  const handleFileChange = (file) => {
-    setFile(file);
-  };
-
-  const handleUpload = async () => {
-    if (!file) {
-      toast({ title: "No file selected", description: "Please upload a CSV file." });
-      return;
-    }
+  const handleFileUpload = async () => {
     const formData = new FormData();
     formData.append("file", file);
-    
-    const response = await fetch("http://localhost:8000/upload", {
-      method: "POST",
-      body: formData,
-    });
-
-    const result = await response.json();
-    setData(result);
-    toast({ title: "Upload successful", description: "Dataset processed successfully!" });
+    const response = await axios.post("http://localhost:8000/upload", formData);
+    setFileId(response.data.file_id);
   };
 
-  const handleSendMessage = () => {
-    sendMessage(wsMessage);
+  const fetchSummary = async () => {
+    if (!fileId) return;
+    const response = await axios.get(`http://localhost:8000/summary/${fileId}`);
+    setSummary(response.data);
   };
 
-  const handleAIChat = async (query) => {
-    setShowAIChat(true);
-    const response = await fetch("http://localhost:8000/generate_ai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
-    });
-    const result = await response.json();
-    setAiResponse(result.response);
+  const askAI = async () => {
+    if (!query) return;
+    const response = await axios.post("http://localhost:8000/generate_insights", { query });
+    setAiResponse(response.data.response);
   };
 
   return (
-    <div className="p-6 grid grid-cols-2 gap-4">
-      <Card>
-        <CardContent>
-          <h2 className="text-xl font-bold mb-4">Upload Dataset</h2>
-          <FileUploader handleChange={handleFileChange} name="file" types={["CSV"]} />
-          <Button onClick={handleUpload} className="mt-4">Process File</Button>
+    <div className="flex flex-col items-center p-6 space-y-6">
+      <Card className="w-full max-w-2xl">
+        <CardContent className="p-4 space-y-4">
+          <Label>Upload CSV Dataset</Label>
+          <Input type="file" onChange={(e) => setFile(e.target.files[0])} />
+          <Button onClick={handleFileUpload}>Upload</Button>
+          {fileId && <p className="text-green-500">File uploaded successfully!</p>}
         </CardContent>
       </Card>
-      <Card>
-        <CardContent>
-          <h2 className="text-xl font-bold mb-4">Real-time Collaboration</h2>
-          <Input value={wsMessage} onChange={(e) => setWsMessage(e.target.value)} placeholder="Send a message" />
-          <Button onClick={handleSendMessage} className="mt-2">Send</Button>
-          <p className="mt-2">Last Message: {lastMessage?.data}</p>
-        </CardContent>
-      </Card>
-      <Card className="col-span-2">
-        <CardContent>
-          <h2 className="text-xl font-bold mb-4">Visualization</h2>
-          {data && (
-            <>
-              <BarChart width={600} height={300} data={data}>
-                <XAxis dataKey="index" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="Outlier" fill="#8884d8" />
-              </BarChart>
-              <LineChart width={600} height={300} data={data}>
-                <XAxis dataKey="index" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="Predicted" stroke="#82ca9d" />
-              </LineChart>
-            </>
+
+      <Card className="w-full max-w-2xl">
+        <CardContent className="p-4 space-y-4">
+          <Button onClick={fetchSummary} disabled={!fileId}>
+            Generate Data Summary
+          </Button>
+          {summary && (
+            <div className="p-2 bg-gray-100 rounded-lg">
+              <pre className="text-sm">{JSON.stringify(summary, null, 2)}</pre>
+            </div>
           )}
         </CardContent>
       </Card>
-      <Card className="col-span-2">
-        <CardContent>
-          <h2 className="text-xl font-bold mb-4">Generative AI Assistant</h2>
-          <Input placeholder="Ask me anything about your dataset..." onKeyDown={(e) => e.key === 'Enter' && handleAIChat(e.target.value)} />
-          <Dialog open={showAIChat} onOpenChange={setShowAIChat}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>AI Response</DialogTitle>
-              </DialogHeader>
-              <p>{aiResponse}</p>
-            </DialogContent>
-          </Dialog>
+
+      <Card className="w-full max-w-2xl">
+        <CardContent className="p-4 space-y-4">
+          <Label>Ask GenStats AI</Label>
+          <Textarea
+            placeholder="Describe your analysis needs..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <Button onClick={askAI}>Generate Insights</Button>
+          {aiResponse && (
+            <div className="p-2 bg-gray-100 rounded-lg">
+              <p className="text-sm">{aiResponse}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
